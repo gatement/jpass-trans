@@ -22,7 +22,7 @@
 int main(int argc, char *argv[])
 {
     // --------------- debug
-    unsigned char in[16] = {97, 98, 99, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0};
+    unsigned char in[16] = {97, 98, 99, 10, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0};
     int in_len = strlen(in);
 
     printf("--------------\n");
@@ -78,13 +78,15 @@ int main(int argc, char *argv[])
     }
 
     // --------------- create channel
-    if(!(channel = libssh2_channel_direct_tcpip_ex(session, "120.27.157.103", 10001, "127.0.0.1", 36821))) {
+    if(!(channel = libssh2_channel_direct_tcpip(session, "120.27.157.103", 10001))) {
         fprintf(stderr, "Failure creating channel");
         return -1;
         goto shutdown;
     }
 
     // --------------- send data
+    libssh2_channel_write(channel, in, in_len);
+    sleep(200);
     libssh2_channel_write(channel, in, in_len);
 
     // --------------- close channel
