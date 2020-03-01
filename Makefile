@@ -2,7 +2,7 @@ objects = main.o util.o
 output = bin
 
 compile: $(objects) mkoutput
-	cc -o $(output)/main $(objects)
+	cc -o $(output)/jpass-trans $(objects)
 
 main.o: main.h
 util.o: util.h
