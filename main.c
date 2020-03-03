@@ -29,9 +29,12 @@
         exit(EXIT_FAILURE); \
     } while (0)
 
+int conn; 
+
 int create_listen_socket();
 int create_ssh_socket();
 void init_ssh_session(LIBSSH2_SESSION *session, int sshfd);
+void handler(int sig);
 
 int main(int argc, char *argv[])
 {
@@ -51,7 +54,6 @@ int main(int argc, char *argv[])
     socklen_t dstaddrlen = sizeof(dstaddr);
 
     int conncount = 0;
-    int conn; 
     int nready;
     int i, clientcount;
 
@@ -128,7 +130,29 @@ int main(int argc, char *argv[])
 		ERR_EXIT("fail to create channel");
 	    }
             channels[i-1] = channel;
-            // TODO: fork to let channel receive data
+
+            // fork to let channel receive data
+            pid_t pid = fork();
+	    if (pid == -1) {
+		ERR_EXIT("fork error");
+            } else if (pid == 0) { // child process
+		signal(SIGUSR1, handler);
+
+		close(listenfd);
+		close(sshfd);
+
+		char recvbuf[1024] = {0};
+		while (1) {
+                    int ret = libssh2_channel_read(hannel, recvbuf, sizeof(recvbuf));
+                    if (ret < 0) {
+			ERR_EXIT("read data from channel error");
+                    } else if (ret > 0) {
+			write(conn, recvbuf, ret);
+                    }
+                }
+	    } else { // parent process
+		close(conn);
+            }
 
             if (--nready <= 0) continue;
         }
@@ -242,4 +266,10 @@ void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
     } else {
         fprintf(stderr, "ssh authenticated by password succeeded.\n");
     }
+}
+
+void handler(int sig) {
+    printf("processor recv a sig=%d\n", sig);
+    close(conn);
+    exit(EXIT_SUCCESS);
 }
