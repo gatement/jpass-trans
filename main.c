@@ -23,7 +23,7 @@
 
 int main(int argc, char *argv[])
 {
-    const int MAX_CONN = 2048;
+    const int MAX_CONN = 2048; // include the listen fd
     const int LISTEN_PORT = 8117;
     const char *SSH_SERVER = "120.27.157.103";
     const int SSH_PORT = 9812;
@@ -104,10 +104,10 @@ int main(int argc, char *argv[])
     socklen_t peeraddrlen = sizeof(peeraddr); 
     socklen_t dstaddrlen = sizeof(dstaddr);
 
-    int conn_count = 0;
+    int conncount = 0;
     int conn; 
     int nready;
-    int i, j;
+    int i, clientcount;
 
     struct pollfd clientspoll[MAX_CONN];
     struct pollfd clients[MAX_CONN];
@@ -118,21 +118,23 @@ int main(int argc, char *argv[])
     clients[0].fd = listenfd;
     clients[0].events = POLLIN;
 
-    LIBSSH2_CHANNEL *channels[];
+    LIBSSH2_CHANNEL *channels[MAX_CONN-1];
+
+    char recvbuf[1024] = {0};
 
     // -- main loop ------------------------------------------------------------
     while (1)
     {
         // set clientspoll
-        j = 0;
+        clientcount = 0;
         for (i = 0; i < MAX_CONN; i++) {
             if (clients[i].fd != -1) {
-		clientspoll[j++] = clients[i];
+		clientspoll[clientcount++] = clients[i];
             }
         }
 
         // poll
-        nready = poll(clientspoll, j + 1, -1);
+        nready = poll(clientspoll, clientcount + 1, -1);
         if (nready == -1) {
             if (errno == EINTR) {
                 continue;
@@ -155,6 +157,7 @@ int main(int argc, char *argv[])
                 if (clients[i].fd < 0) {
                     clients[i].fd = conn;
 		    clients[i].events = POLLIN;
+                    conncount++;
                     break;
                 }
             }
@@ -167,87 +170,56 @@ int main(int argc, char *argv[])
 	    if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
 		ERR_EXIT("get sock name error");
             }
-            printf("[%d]: recv conn %s:%d -> %s:%d\n", ++conn_count, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port), 
-                                                                      inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
+
+            // create ssh channel
+            int dstport = ntohs(dstaddr.sin_port);
+            const char *dstip = inet_ntoa(dstaddr.sin_addr);
+	    LIBSSH2_CHANNEL *channel;
+	    if(!(channel = libssh2_channel_direct_tcpip(session, dstip, dstport))) {
+		ERR_EXIT("fail to create channel");
+	    }
+            channels[i-1] = channel;
+
+            printf("[%d]: recv conn %s:%d -> %s:%d\n", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port), dstip, dstport);
 
             if (--nready <= 0) continue;
         }
 
         // -- read data from conn ----------------------------------------------
-        for (i = 1; i <= maxi; i++)
-        {
-            conn = clients[i].fd;
-            if (conn == -1)
-                continue;
-            if (clients[i].revents & POLLIN)
-            {
+        for (i = 1; i <= clientcount; i++) {
+            conn = clientspoll[i].fd;
+            if (conn == -1) continue;
 
-                char recvbuf[1024] = {0};
-                int ret = readline(conn, recvbuf, 1024);
-                if (ret == -1)
+            // start receiving data
+            if (clientspoll[i].revents & POLLIN) {
+		int ret = read(conn, recvbuf, sizeof(recvbuf));
+                if (ret == -1) {
                     ERR_EXIT("readline error");
-                else if (ret  == 0) 
-                {
-                    //printf("clients  close \n");
+                } else if (ret == 0) {
+                    //printf("conn close\n");
                     clients[i].fd = -1;
+                    conncount--;
                     close(conn);
+		    libssh2_channel_close(channels[i-1]);
+		    libssh2_channel_free(channels[i-1]);
+                } else {
+                    // write to ssh channel
+		    libssh2_channel_write(channels[i-1], recvbuf, ret);
                 }
 
-                fputs(recvbuf, stdout);
-                writen(conn, recvbuf, strlen(recvbuf));
-
-                if (--nready <= 0)
-                    break;
+                if (--nready <= 0) break;
             }
         }
+    } 
+    //sleep(10);
 
-    }    
-
-
-    /*
-    // --------------- debug
-    unsigned char in[16] = {97, 98, 99, 10, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0};
-    int in_len = strlen(in);
-
-    printf("--------------\n");
-    print_buf(in, in_len);
-
-
-    // --------------- create channel
-    if(!(channel = libssh2_channel_direct_tcpip(session, "120.27.157.103", 10001))) {
-        fprintf(stderr, "Failure creating channel");
-        return -1;
-        goto shutdown;
-    }
-
-    // --------------- send data
-    libssh2_channel_write(channel, in, in_len);
-    sleep(200);
-    libssh2_channel_write(channel, in, in_len);
-
-    // --------------- close channel
-    libssh2_channel_close(channel);
-    libssh2_channel_free(channel);
-
-    shutdown:
     libssh2_session_disconnect(session, "Normal Shutdown");
     libssh2_session_free(session);
 
-    char recvbuf[1024];
-    while (1)
-    {
-        memset(recvbuf, 0, sizeof(recvbuf));
-        int ret = read(conn, recvbuf, sizeof(recvbuf));
-        fputs(recvbuf, stdout);
-        write(conn, recvbuf, ret);  
-    }
-
-    */
-    //sleep(10);
     close(listenfd);
     close(sshfd);
     libssh2_exit();
 
-    printf("--------------10\n");
+    printf("application exited.\n");
     return 0;
 }

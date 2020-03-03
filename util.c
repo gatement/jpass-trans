@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include "util.h"
 
-void print_buf(unsigned char * buffer, unsigned int len)
-{
+void print_buf(unsigned char * buffer, unsigned int len) {
   int i;
   for(i = 0; i < len; i++)
   {
