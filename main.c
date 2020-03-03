@@ -100,7 +100,9 @@ int main(int argc, char *argv[])
     // == accept conn and read tcp data ======================================== 
     // -- init vars ------------------------------------------------------------
     struct sockaddr_in peeraddr; 
-    socklen_t peerlen = sizeof(peeraddr); 
+    struct sockaddr_in dstaddr;
+    socklen_t peeraddrlen = sizeof(peeraddr); 
+    socklen_t dstaddrlen = sizeof(dstaddr);
 
     int conn_count = 0;
     int conn; 
@@ -140,38 +142,38 @@ int main(int argc, char *argv[])
             continue;
 	}
 
-    // -- start accept conn ----------------------------------------------------
+        // -- start accept conn ------------------------------------------------
         if (clientspoll[0].revents & POLLIN) {
-            conn = accept(listenfd, (struct sockaddr *)&peeraddr, &peerlen); 
+            // accept conn
+            conn = accept(listenfd, (struct sockaddr *)&peeraddr, &peeraddrlen); 
             if (conn == -1) {
                 ERR_EXIT("accept conn error");
 	    }
 
+            // save conn
             for (i = 1; i < MAX_CONN; i++) {
-                if (clients[i].fd < 0)
-                {
+                if (clients[i].fd < 0) {
                     clients[i].fd = conn;
-                    if (i > maxi)
-                        maxi = i;
+		    clients[i].events = POLLIN;
                     break;
                 }
             }
 
-            if (i == 2048)
-            {
-                fprintf(stderr, "too many clientss\n");
+            if (i == MAX_CONN) {
+                fprintf(stderr, "too many clients, max: %d\n", MAX_CONN);
                 exit(EXIT_FAILURE);
             }
 
-            printf("%d: recv connect ip=%s port=%d\n", ++conn_count, inet_ntoa(peeraddr.sin_addr),
-                   ntohs(peeraddr.sin_port));
+	    if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
+		ERR_EXIT("get sock name error");
+            }
+            printf("[%d]: recv conn %s:%d -> %s:%d\n", ++conn_count, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port), 
+                                                                      inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
 
-            clients[i].events = POLLIN;
-
-            if (--nready <= 0)
-                continue;
+            if (--nready <= 0) continue;
         }
 
+        // -- read data from conn ----------------------------------------------
         for (i = 1; i <= maxi; i++)
         {
             conn = clients[i].fd;
