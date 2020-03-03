@@ -17,10 +17,10 @@
 
 #define MAX_CONN 2048
 #define LISTEN_PORT 8117
-#define SSH_SERVER "120.27.157.103"
-#define SSH_PORT 9812
-#define SSH_USERNAME "johnson"
-#define SSH_PASSWORD "123456"
+#define SSH_SERVER "47.52.27.162"
+#define SSH_PORT 22
+#define SSH_USERNAME "root"
+#define SSH_PASSWORD "dt8FOT9v7Yhm8C1pTRw6n2jQg7E5"
 
 // include the listen fd
 #define ERR_EXIT(m) \
@@ -46,7 +46,8 @@ int main(int argc, char *argv[])
     // init ssh session
     int sshfd = create_ssh_socket();
     LIBSSH2_SESSION *session;
-    init_ssh_session(session, sshfd);
+    // debug
+    //init_ssh_session(session, sshfd);
 
     struct sockaddr_in peeraddr; 
     struct sockaddr_in dstaddr;
@@ -124,6 +125,8 @@ int main(int argc, char *argv[])
             // print log
             printf("[%d]: recv conn %s:%d -> %s:%d\n", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port), dstip, dstport);
 
+            // debug
+            /*
             // create ssh channel
 	    LIBSSH2_CHANNEL *channel;
 	    if(!(channel = libssh2_channel_direct_tcpip(session, dstip, dstport))) {
@@ -143,16 +146,18 @@ int main(int argc, char *argv[])
 
 		char recvbuf[1024] = {0};
 		while (1) {
-                    int ret = libssh2_channel_read(hannel, recvbuf, sizeof(recvbuf));
+                    int ret = libssh2_channel_read(channel, recvbuf, sizeof(recvbuf));
                     if (ret < 0) {
 			ERR_EXIT("read data from channel error");
                     } else if (ret > 0) {
+                        print_buf(recvbuf, ret);
 			write(conn, recvbuf, ret);
                     }
                 }
 	    } else { // parent process
 		close(conn);
             }
+            */
 
             if (--nready <= 0) continue;
         }
@@ -177,7 +182,8 @@ int main(int argc, char *argv[])
                 } else {
                     // write to ssh channel
                     print_buf(recvbuf, ret);
-		    libssh2_channel_write(channels[i-1], recvbuf, ret);
+                    // debug
+		    //libssh2_channel_write(channels[i-1], recvbuf, ret);
                 }
 
                 if (--nready <= 0) break;
@@ -227,6 +233,8 @@ int create_listen_socket() {
         ERR_EXIT("listen error");
     }
 
+    fprintf(stderr, "listening on port %d\n", LISTEN_PORT);
+
     return listenfd;
 }
 
@@ -244,9 +252,10 @@ int create_ssh_socket() {
     sshservaddr.sin_port = htons(SSH_PORT);
     sshservaddr.sin_addr.s_addr = inet_addr(SSH_SERVER);
 
-    if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
-        ERR_EXIT("connect ssh server error"); 
-    }
+    // debug
+    //if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
+    //    ERR_EXIT("connect ssh server error"); 
+    //}
 
     return sshfd;
 }

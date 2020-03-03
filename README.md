@@ -1,5 +1,10 @@
 ## config
 <pre>
+    vim /etc/sysctl.conf       
+        net.ipv4.ip_forward = 1
+    sysctl -p
+    (or echo 1 > /proc/sys/net/ipv4/ip_forward)
+
     iptables -t filter -F
     iptables -t filter -P FORWARD ACCEPT
     iptables -t mangle -F
