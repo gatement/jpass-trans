@@ -12,7 +12,6 @@
 #include<poll.h>
 
 #include<libssh2.h>
-#include<libssh2_sftp.h>
 
 #include "util.h"
 
@@ -25,8 +24,11 @@
 int main(int argc, char *argv[])
 {
     const int MAX_CONN = 2048;
-    const char *USERNAME = "root";
-    const char *PASSWORD = "LaBnCdAA";
+    const int LISTEN_PORT = 8117;
+    const char *SSH_SERVER = "120.27.157.103";
+    const int SSH_PORT = 9812;
+    const char *SSH_USERNAME = "johnson";
+    const char *SSH_PASSWORD = "123456";
 
     signal(SIGPIPE, SIG_IGN);
 
@@ -34,10 +36,9 @@ int main(int argc, char *argv[])
     // -- create listening socket ----------------------------------------------
     int listenfd;
     if ((listenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        ERR_EXIT("socket error");
+        ERR_EXIT("create listening socket error");
     }
 
-    // -- set socket options ---------------------------------------------------
     int on = 1;
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
         ERR_EXIT("setsockopt SO_REUSEADDR error");
@@ -46,14 +47,13 @@ int main(int argc, char *argv[])
         ERR_EXIT("setsockopt IP_TRANSPARENT error");
     }
 
-    // -- bind and listen ------------------------------------------------------
-    struct sockaddr_in servaddr;
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(8119);
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    struct sockaddr_in listenaddr;
+    memset(&listenaddr, 0, sizeof(listenaddr));
+    listenaddr.sin_family = AF_INET;
+    listenaddr.sin_port = htons(LISTEN_PORT);
+    listenaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0){
+    if (bind(listenfd, (struct sockaddr *)&listenaddr, sizeof(listenaddr)) < 0){
         ERR_EXIT("bind error");
     }
 
@@ -61,51 +61,96 @@ int main(int argc, char *argv[])
         ERR_EXIT("listen error");
     }
 
+    // == init ssh session ===================================================== 
+    // -- init vars ------------------------------------------------------------
+    int sshfd;
+    LIBSSH2_SESSION *session;
+
+    // -- create ssh server socket ---------------------------------------------
+    if ((sshfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
+        ERR_EXIT("create ssh socket error");       
+    }
+
+    struct sockaddr_in sshservaddr;
+    memset(&sshservaddr, 0, sizeof(sshservaddr));
+    sshservaddr.sin_family = AF_INET;  
+    sshservaddr.sin_port = htons(SSH_PORT);
+    sshservaddr.sin_addr.s_addr = inet_addr(SSH_SERVER);
+
+    if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
+        ERR_EXIT("connect ssh server error"); 
+    }
+
+    // -- init libssh session --------------------------------------------------
+    if((libssh2_init(0)) < 0) {
+        ERR_EXIT("init libssh2 error");       
+    }
+
+    session = libssh2_session_init();
+    if(libssh2_session_handshake(session, sshfd)) {
+        ERR_EXIT("fail to do ssh session handshake");       
+    }
+
+    if (libssh2_userauth_password(session, SSH_USERNAME, SSH_PASSWORD)) {
+        ERR_EXIT("fail to do ssh auth");       
+    } else {
+        fprintf(stderr, "ssh authenticated by password succeeded.\n");
+    }
+
+    // == accept conn and read tcp data ======================================== 
     // -- init vars ------------------------------------------------------------
     struct sockaddr_in peeraddr; 
     socklen_t peerlen = sizeof(peeraddr); 
 
     int conn_count = 0;
     int conn; 
-    int i;
     int nready;
+    int i, j;
 
-    struct pollfd client[MAX_CONN];
+    struct pollfd clientspoll[MAX_CONN];
+    struct pollfd clients[MAX_CONN];
+
     for (i = 0; i < MAX_CONN; i++) {
-        client[i].fd = -1;
+        clients[i].fd = -1;
     }
-    client[0].fd = listenfd;
-    client[0].events = POLLIN;
+    clients[0].fd = listenfd;
+    clients[0].events = POLLIN;
 
-    // == init ssh session =====================================================
-    
-    // == start accept connections =============================================
-    /*
+    LIBSSH2_CHANNEL *channels[];
+
+    // -- main loop ------------------------------------------------------------
     while (1)
     {
-        nready = poll(client, maxi + 1, -1);
-        if (nready == -1)
-        {
-            if (errno == EINTR)
-                continue;
-            ERR_EXIT("poll error");
+        // set clientspoll
+        j = 0;
+        for (i = 0; i < MAX_CONN; i++) {
+            if (clients[i].fd != -1) {
+		clientspoll[j++] = clients[i];
+            }
         }
 
-        if (nready == 0)
+        // poll
+        nready = poll(clientspoll, j + 1, -1);
+        if (nready == -1) {
+            if (errno == EINTR) {
+                continue;
+	    }
+            ERR_EXIT("poll error");
+        } else if (nready == 0) {
             continue;
+	}
 
-        if (client[0].revents & POLLIN)
-        {
-
+    // -- start accept conn ----------------------------------------------------
+        if (clientspoll[0].revents & POLLIN) {
             conn = accept(listenfd, (struct sockaddr *)&peeraddr, &peerlen); 
-            if (conn == -1)
-                ERR_EXIT("accept error");
+            if (conn == -1) {
+                ERR_EXIT("accept conn error");
+	    }
 
-            for (i = 1; i < 2048; i++)
-            {
-                if (client[i].fd < 0)
+            for (i = 1; i < MAX_CONN; i++) {
+                if (clients[i].fd < 0)
                 {
-                    client[i].fd = conn;
+                    clients[i].fd = conn;
                     if (i > maxi)
                         maxi = i;
                     break;
@@ -114,14 +159,14 @@ int main(int argc, char *argv[])
 
             if (i == 2048)
             {
-                fprintf(stderr, "too many clients\n");
+                fprintf(stderr, "too many clientss\n");
                 exit(EXIT_FAILURE);
             }
 
             printf("%d: recv connect ip=%s port=%d\n", ++conn_count, inet_ntoa(peeraddr.sin_addr),
                    ntohs(peeraddr.sin_port));
 
-            client[i].events = POLLIN;
+            clients[i].events = POLLIN;
 
             if (--nready <= 0)
                 continue;
@@ -129,10 +174,10 @@ int main(int argc, char *argv[])
 
         for (i = 1; i <= maxi; i++)
         {
-            conn = client[i].fd;
+            conn = clients[i].fd;
             if (conn == -1)
                 continue;
-            if (client[i].revents & POLLIN)
+            if (clients[i].revents & POLLIN)
             {
 
                 char recvbuf[1024] = {0};
@@ -141,8 +186,8 @@ int main(int argc, char *argv[])
                     ERR_EXIT("readline error");
                 else if (ret  == 0) 
                 {
-                    //printf("client  close \n");
-                    client[i].fd = -1;
+                    //printf("clients  close \n");
+                    clients[i].fd = -1;
                     close(conn);
                 }
 
@@ -154,11 +199,7 @@ int main(int argc, char *argv[])
             }
         }
 
-    }
-
-
-    
-*/
+    }    
 
 
     /*
@@ -169,54 +210,6 @@ int main(int argc, char *argv[])
     printf("--------------\n");
     print_buf(in, in_len);
 
-    // --------------- vars
-    const char *username = "root";
-    const char *password = "LaBnCdAA";
-
-    unsigned long hostaddr;
-    int rc, sock, i, auth_pw = 0;
-    struct sockaddr_in_sin;
-    const char *fingerprint;
-    char * userauthlist;
-    LIBSSH2_SESSION *session;
-    LIBSSH2_CHANNEL *channel;
-
-    // --------------- open socket to server
-    if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        ERR_EXIT("socket error");       
-    }
-
-    struct sockaddr_in servaddr;    
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;  
-    servaddr.sin_port = htons(22);
-    servaddr.sin_addr.s_addr = inet_addr("47.52.27.162");
-
-    if (connect(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
-        ERR_EXIT("connect error"); 
-
-    // --------------- open ssh session
-    rc = libssh2_init(0);
-    if(rc != 0) {
-        fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
-        return -1;
-    }
- 
-    session = libssh2_session_init();
-    if(libssh2_session_handshake(session, sock)) {
-        fprintf(stderr, "Failure establishing SSH session");
-        return -1;
-    }
-    printf("--------------6\n");
-
-    // --------------- login
-    if (libssh2_userauth_password(session, username, password)) {
-        fprintf(stderr, "Authentication by password failed!\n");
-        printf("--------------9\n");
-        goto shutdown;
-    } else {
-        fprintf(stderr, "Authentication by password succeeded.\n");
-    }
 
     // --------------- create channel
     if(!(channel = libssh2_channel_direct_tcpip(session, "120.27.157.103", 10001))) {
@@ -238,13 +231,6 @@ int main(int argc, char *argv[])
     libssh2_session_disconnect(session, "Normal Shutdown");
     libssh2_session_free(session);
 
-    libssh2_exit();
-    close(sock);
-
-
-
-
-
     char recvbuf[1024];
     while (1)
     {
@@ -254,9 +240,12 @@ int main(int argc, char *argv[])
         write(conn, recvbuf, ret);  
     }
 
-
-
     */
+    //sleep(10);
+    close(listenfd);
+    close(sshfd);
+    libssh2_exit();
+
     printf("--------------10\n");
     return 0;
 }
