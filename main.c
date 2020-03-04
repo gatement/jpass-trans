@@ -169,11 +169,13 @@ int main(int argc, char *argv[])
 
             // start receiving data
             if (clientspoll[i].revents & POLLIN) {
+	        // debug
+                memset(recvbuf, 0, sizeof(recvbuf));
 		int ret = read(conn, recvbuf, sizeof(recvbuf));
                 if (ret == -1) {
                     ERR_EXIT("readline error");
                 } else if (ret == 0) {
-                    //printf("conn close\n");
+                    fprintf(stderr, "conn close.\n");
                     clients[i].fd = -1;
                     conncount--;
                     close(conn);
@@ -181,7 +183,9 @@ int main(int argc, char *argv[])
 		    libssh2_channel_free(channels[i-1]);
                 } else {
                     // write to ssh channel
+                    // debug
                     print_buf(recvbuf, ret);
+                    fputs(recvbuf, stdout);
                     // debug
 		    //libssh2_channel_write(channels[i-1], recvbuf, ret);
                 }
@@ -212,11 +216,11 @@ int create_listen_socket() {
     }
 
     int on = 1;
-    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-        ERR_EXIT("setsockopt SO_REUSEADDR error");
-    }
     if (setsockopt(listenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
         ERR_EXIT("setsockopt IP_TRANSPARENT error");
+    }
+    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+        ERR_EXIT("setsockopt SO_REUSEADDR error");
     }
 
     struct sockaddr_in listenaddr;
@@ -278,7 +282,7 @@ void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
 }
 
 void handler(int sig) {
-    printf("processor recv a sig=%d\n", sig);
+    fprintf(stderr, "processor recv a sig=%d\n", sig);
     close(conn);
     exit(EXIT_SUCCESS);
 }
