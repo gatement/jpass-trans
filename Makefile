@@ -1,8 +1,9 @@
 objects = main.o util.o
 output = bin
+compiler = cc
 
 compile: $(objects) mkoutput
-	cc -o $(output)/jpass-trans -lssh2 $(objects)
+	$(compiler) -o $(output)/jpass-trans -lssh2 $(objects)
 
 main.o: main.h
 util.o: util.h

@@ -23,9 +23,12 @@
 ## dependency
 yum install -y libssh2-devel
 
-## compile
+## linux compile
 make
 make clean
+
+## openwrt cross compile
+./build-openwrt.sh 
 
 ## run
 bin/jpass-trans
