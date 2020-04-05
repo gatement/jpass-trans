@@ -17,8 +17,8 @@
 
 #define MAX_CONN 2048
 #define LISTEN_PORT 8117
-#define SSH_SERVER "47.52.27.162"
-#define SSH_PORT 22
+#define SSH_SERVER "120.27.157.103"
+#define SSH_PORT 10000
 #define SSH_USERNAME "root"
 #define SSH_PASSWORD "ALFZLMQiG5aArobI3NPWDiRUTz2U"
 
@@ -31,7 +31,7 @@
 
 int create_listen_socket();
 int create_ssh_socket();
-void init_ssh_session(LIBSSH2_SESSION *session, int sshfd);
+LIBSSH2_SESSION * init_ssh_session(int sshfd);
 void handler(int sig);
 
 int main(int argc, char *argv[])
@@ -43,8 +43,7 @@ int main(int argc, char *argv[])
 
     // init ssh session
     int sshfd = create_ssh_socket();
-    LIBSSH2_SESSION *session;
-    init_ssh_session(session, sshfd);
+    LIBSSH2_SESSION *session = init_ssh_session(sshfd);
 
     struct sockaddr_in peeraddr; 
     struct sockaddr_in dstaddr;
@@ -72,6 +71,40 @@ int main(int argc, char *argv[])
     // -- main loop ------------------------------------------------------------
     while (1)
     {
+        //printf("[%d]====================loop start\n", conncount);
+        // -- read data from ssh channel ---------------------------------------
+        for (i = 1; i < MAX_CONN; i++) {
+            if (clients[i].fd > 0) {
+        //printf("--------------------start read ssh: %d\n", i);
+                memset(recvbuf, 0, sizeof(recvbuf));
+                int ret = libssh2_channel_read(channels[i-1], recvbuf, sizeof(recvbuf));
+
+        //printf("--------------------done read ssh: %d/%d\n", i, ret);
+                if (ret == LIBSSH2_ERROR_EAGAIN) {
+                    // do nothing
+                } else if (ret < 0) {
+		    ERR_EXIT("read data from channel error");
+
+                    fprintf(stderr, "ssh channel close.\n");
+                    clients[i].fd = -1;
+                    conncount --;
+                    close(conn);
+                    
+		    libssh2_channel_close(channels[i-1]);
+		    libssh2_channel_free(channels[i-1]);
+
+                } else if (ret > 0) {
+                    // debug
+                    //print_buf(recvbuf, ret);
+                    //printf("====================%d/%d recving:\n", i, ret);
+                    //fputs(recvbuf, stdout);
+
+		    write(clients[i].fd, recvbuf, ret);
+                }
+
+            }
+        }
+
         // set clientspoll
         clientcount = 0;
         for (i = 0; i < MAX_CONN; i++) {
@@ -81,7 +114,7 @@ int main(int argc, char *argv[])
         }
 
         // poll
-        nready = poll(clientspoll, clientcount + 1, -1);
+        nready = poll(clientspoll, clientcount + 1, 1);
         if (nready == -1) {
             if (errno == EINTR) {
                 continue;
@@ -128,36 +161,12 @@ int main(int argc, char *argv[])
 
             // create ssh channel
 	    LIBSSH2_CHANNEL *channel;
-printf("1---------------------\n");
+	    libssh2_session_set_blocking(session, 1);
 	    if(!(channel = libssh2_channel_direct_tcpip(session, dstip, dstport))) {
 		ERR_EXIT("fail to create channel");
 	    }
-printf("2---------------------\n");
+	    libssh2_session_set_blocking(session, 0);
             channels[i-1] = channel;
-
-            // fork to let channel receive data
-            pid_t pid = fork();
-	    if (pid == -1) {
-		ERR_EXIT("fork error");
-            } else if (pid == 0) { // child process
-		signal(SIGUSR1, handler);
-
-		close(listenfd);
-		close(sshfd);
-
-		char recvbuf[1024] = {0};
-		while (1) {
-                    int ret = libssh2_channel_read(channel, recvbuf, sizeof(recvbuf));
-                    if (ret < 0) {
-			ERR_EXIT("read data from channel error");
-                    } else if (ret > 0) {
-                        print_buf(recvbuf, ret);
-			write(conn, recvbuf, ret);
-                    }
-                }
-	    } else { // parent process
-		close(conn);
-            }
 
             if (--nready <= 0) continue;
         }
@@ -174,7 +183,7 @@ printf("2---------------------\n");
                 if (ret == -1) {
                     ERR_EXIT("readline error");
                 } else if (ret == 0) {
-                    fprintf(stderr, "conn close.\n");
+                    fprintf(stderr, "client conn close.\n");
                     clients[i].fd = -1;
                     conncount --;
                     close(conn);
@@ -183,11 +192,13 @@ printf("2---------------------\n");
 		    libssh2_channel_free(channels[i-1]);
                 } else {
                     // debug
-                    print_buf(recvbuf, ret);
-                    fputs(recvbuf, stdout);
+                    //print_buf(recvbuf, ret);
+                    printf("====================sending:\n");
+                    //fputs(recvbuf, stdout);
 
                     // write to ssh channel
-		    //libssh2_channel_write(channels[i-1], recvbuf, ret);
+		    libssh2_channel_write(channels[i-1], recvbuf, ret);
+                    printf("====================done sending:\n");
                 }
 
                 if (--nready <= 0) break;
@@ -262,7 +273,9 @@ int create_ssh_socket() {
     return sshfd;
 }
 
-void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
+LIBSSH2_SESSION * init_ssh_session(int sshfd) {
+    LIBSSH2_SESSION *session;
+
     if((libssh2_init(0)) < 0) {
         ERR_EXIT("init libssh2 error");       
     }
@@ -277,9 +290,12 @@ void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
     } else {
         fprintf(stderr, "ssh authenticated by password succeeded.\n");
     }
+
+    return session;
 }
 
 void handler(int sig) {
     fprintf(stderr, "processor recv a sig=%d\n", sig);
     exit(EXIT_SUCCESS);
 }
+
