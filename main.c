@@ -122,11 +122,13 @@ int main(int argc, char *argv[])
 	    if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
 		ERR_EXIT("get sock name error");
             }
-            int dstport = ntohs(dstaddr.sin_port);
-            const char *dstip = inet_ntoa(dstaddr.sin_addr);
 
             // print log
-            printf("[%d]: recv conn %s:%d -> %s:%d\n", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port), dstip, dstport);
+            printf("[%d]: recv conn %s:%d -> ", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+            printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
+
+            int dstport = ntohs(dstaddr.sin_port);
+            const char *dstip = inet_ntoa(dstaddr.sin_addr);
 
             // debug
             /*
@@ -225,6 +227,12 @@ int create_listen_socket() {
         ERR_EXIT("create listening socket error");
     }
 
+    struct sockaddr_in listenaddr;
+    memset(&listenaddr, 0, sizeof(listenaddr));
+    listenaddr.sin_family = AF_INET;
+    listenaddr.sin_port = htons(LISTEN_PORT);
+    listenaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
     int on = 1;
     if (setsockopt(listenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
         ERR_EXIT("setsockopt IP_TRANSPARENT error");
@@ -232,12 +240,6 @@ int create_listen_socket() {
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
         ERR_EXIT("setsockopt SO_REUSEADDR error");
     }
-
-    struct sockaddr_in listenaddr;
-    memset(&listenaddr, 0, sizeof(listenaddr));
-    listenaddr.sin_family = AF_INET;
-    listenaddr.sin_port = htons(LISTEN_PORT);
-    listenaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(listenfd, (struct sockaddr *)&listenaddr, sizeof(listenaddr)) < 0){
         ERR_EXIT("bind error");
