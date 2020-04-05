@@ -11,8 +11,7 @@
 #include<signal.h>
 #include<poll.h>
 
-// debug
-//#include<libssh2.h>
+#include<libssh2.h>
 
 #include "util.h"
 
@@ -21,7 +20,7 @@
 #define SSH_SERVER "47.52.27.162"
 #define SSH_PORT 22
 #define SSH_USERNAME "root"
-#define SSH_PASSWORD "123"
+#define SSH_PASSWORD "ALFZLMQiG5aArobI3NPWDiRUTz2U"
 
 // include the listen fd
 #define ERR_EXIT(m) \
@@ -32,7 +31,7 @@
 
 int create_listen_socket();
 int create_ssh_socket();
-//void init_ssh_session(LIBSSH2_SESSION *session, int sshfd);
+void init_ssh_session(LIBSSH2_SESSION *session, int sshfd);
 void handler(int sig);
 
 int main(int argc, char *argv[])
@@ -44,10 +43,8 @@ int main(int argc, char *argv[])
 
     // init ssh session
     int sshfd = create_ssh_socket();
-    // debug
-    //LIBSSH2_SESSION *session;
-    // debug
-    //init_ssh_session(session, sshfd);
+    LIBSSH2_SESSION *session;
+    init_ssh_session(session, sshfd);
 
     struct sockaddr_in peeraddr; 
     struct sockaddr_in dstaddr;
@@ -68,8 +65,7 @@ int main(int argc, char *argv[])
     clients[0].fd = listenfd;
     clients[0].events = POLLIN;
 
-    // debug
-    //LIBSSH2_CHANNEL *channels[MAX_CONN-1];
+    LIBSSH2_CHANNEL *channels[MAX_CONN-1];
 
     char recvbuf[1024] = {0};
 
@@ -130,13 +126,13 @@ int main(int argc, char *argv[])
             int dstport = ntohs(dstaddr.sin_port);
             const char *dstip = inet_ntoa(dstaddr.sin_addr);
 
-            // debug
-            /*
             // create ssh channel
 	    LIBSSH2_CHANNEL *channel;
+printf("1---------------------\n");
 	    if(!(channel = libssh2_channel_direct_tcpip(session, dstip, dstport))) {
 		ERR_EXIT("fail to create channel");
 	    }
+printf("2---------------------\n");
             channels[i-1] = channel;
 
             // fork to let channel receive data
@@ -162,7 +158,6 @@ int main(int argc, char *argv[])
 	    } else { // parent process
 		close(conn);
             }
-            */
 
             if (--nready <= 0) continue;
         }
@@ -174,7 +169,6 @@ int main(int argc, char *argv[])
 
             // start receiving data
             if (clientspoll[i].revents & POLLIN) {
-	        // debug
                 memset(recvbuf, 0, sizeof(recvbuf));
 		int ret = read(conn, recvbuf, sizeof(recvbuf));
                 if (ret == -1) {
@@ -185,17 +179,14 @@ int main(int argc, char *argv[])
                     conncount --;
                     close(conn);
                     
-                    // debug
-                    /*
 		    libssh2_channel_close(channels[i-1]);
 		    libssh2_channel_free(channels[i-1]);
-                    */
                 } else {
-                    // write to ssh channel
                     // debug
                     print_buf(recvbuf, ret);
                     fputs(recvbuf, stdout);
-                    // debug
+
+                    // write to ssh channel
 		    //libssh2_channel_write(channels[i-1], recvbuf, ret);
                 }
 
@@ -203,15 +194,11 @@ int main(int argc, char *argv[])
             }
         }
     } 
-    //sleep(10);
 
-    // debug
-    /*
     libssh2_session_disconnect(session, "Normal Shutdown");
     libssh2_session_free(session);
     close(sshfd);
     libssh2_exit();
-    */
 
     close(listenfd);
 
@@ -268,16 +255,13 @@ int create_ssh_socket() {
     sshservaddr.sin_port = htons(SSH_PORT);
     sshservaddr.sin_addr.s_addr = inet_addr(SSH_SERVER);
 
-    // debug
-    //if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
-    //    ERR_EXIT("connect ssh server error"); 
-    //}
+    if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
+        ERR_EXIT("connect ssh server error"); 
+    }
 
     return sshfd;
 }
 
-// debug
-/*
 void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
     if((libssh2_init(0)) < 0) {
         ERR_EXIT("init libssh2 error");       
@@ -294,7 +278,6 @@ void init_ssh_session(LIBSSH2_SESSION *session, int sshfd) {
         fprintf(stderr, "ssh authenticated by password succeeded.\n");
     }
 }
-*/
 
 void handler(int sig) {
     fprintf(stderr, "processor recv a sig=%d\n", sig);
