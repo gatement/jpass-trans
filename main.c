@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 
     // --------------- vars
     const char *username = "root";
-    const char *password = "LaBnCdAA";
+    const char *password = "123456";
 
     unsigned long hostaddr;
     int rc, sock, i, auth_pw = 0;
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     }
 
     // --------------- create channel
-    if(!(channel = libssh2_channel_direct_tcpip(session, "120.27.157.103", 10001))) {
+    if(!(channel = libssh2_channel_direct_tcpip(session, "120.27.157.103", 10002))) {
         fprintf(stderr, "Failure creating channel");
         return -1;
         goto shutdown;
