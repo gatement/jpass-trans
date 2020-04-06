@@ -16,7 +16,7 @@
 #define MAX_CONN 2047
 #define LISTEN_PORT 8117
 #define JPASS_SERVER "192.168.56.1"
-#define JPASS_PORT 8119
+#define JPASS_PORT 8117
 
 int create_listen_socket();
 
@@ -106,17 +106,16 @@ int main(int argc, char *argv[])
 	    clients[i+1].fd = jpassfd;
 	    clients[i+1].events = POLLIN;
 
-            // debug
 	    // send jpass sock header data (big-endian ip + big-endian port)
-            //unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
-            //int port = htons(dstaddr.sin_port);
-            //recvbuf[0] = (unsigned char)(addr >> 24);
-            //recvbuf[1] = (unsigned char)(addr >> 16);
-            //recvbuf[2] = (unsigned char)(addr >> 8);
-            //recvbuf[3] = (unsigned char)(addr);
-            //recvbuf[4] = (unsigned char)(port >> 8);
-            //recvbuf[5] = (unsigned char)(port);
-            //write(jpassfd, recvbuf, 6);
+            unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
+            int port = htons(dstaddr.sin_port);
+            recvbuf[0] = (unsigned char)(addr >> 24);
+            recvbuf[1] = (unsigned char)(addr >> 16);
+            recvbuf[2] = (unsigned char)(addr >> 8);
+            recvbuf[3] = (unsigned char)(addr);
+            recvbuf[4] = (unsigned char)(port >> 8);
+            recvbuf[5] = (unsigned char)(port);
+            write(jpassfd, recvbuf, 6);
 
             if (--nready <= 0) continue;
         }
@@ -160,7 +159,7 @@ int main(int argc, char *argv[])
                     conncount --;
                 } else {
                     // debug
-                    print_buf(recvbuf, ret);
+                    //print_buf(recvbuf, ret);
                     //fputs(recvbuf, stdout);
 
 		    // write other part
