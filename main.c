@@ -18,13 +18,6 @@
 #define JPASS_SERVER "192.168.56.1"
 #define JPASS_PORT 8119
 
-// include the listen fd
-#define ERR_EXIT(m) \
-    do { \
-        perror(m); \
-        exit(EXIT_FAILURE); \
-    } while (0)
-
 int create_listen_socket();
 
 int main(int argc, char *argv[])
@@ -51,7 +44,7 @@ int main(int argc, char *argv[])
     clients[0].fd = listenfd;
     clients[0].events = POLLIN;
 
-    char recvbuf[1024] = {0};
+    unsigned char recvbuf[1024] = {0};
 
     // -- main loop ------------------------------------------------------------
     while (1)
@@ -70,7 +63,7 @@ int main(int argc, char *argv[])
             if (errno == EINTR) {
                 continue;
 	    }
-            ERR_EXIT("poll error");
+            printf("poll error\n");
         } else if (nready == 0) {
             continue;
 	}
@@ -80,7 +73,7 @@ int main(int argc, char *argv[])
             // accept conn
             conn = accept(listenfd, (struct sockaddr *)&peeraddr, &peeraddrlen); 
             if (conn == -1) {
-                ERR_EXIT("accept conn error");
+                printf("accept conn error\n");
 	    }
 
             // save conn
@@ -89,19 +82,19 @@ int main(int argc, char *argv[])
                     clients[i].fd = conn;
 		    clients[i].events = POLLIN;
                     
-                    conncount += 1;
+                    conncount ++;
                     break;
                 }
             }
 
             if ((i+1) >= MAX_CONN) {
-                fprintf(stderr, "too many clients, max: %d\n", MAX_CONN);
+                printf("too many clients, max: %d\n", MAX_CONN);
                 exit(EXIT_FAILURE);
             }
 
             // get dst addr
 	    if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
-		ERR_EXIT("get sock name error");
+		printf("get sock name error\n");
             }
 
             // print log
@@ -113,15 +106,17 @@ int main(int argc, char *argv[])
 	    clients[i+1].fd = jpassfd;
 	    clients[i+1].events = POLLIN;
 
+            // debug
 	    // send jpass sock header data (big-endian ip + big-endian port)
-            unsigned int addr = inet_addr(inet_ntoa(dstaddr.sin_addr));
-            recvbuf[0] = (unsigned char)(addr >> 24);
-            recvbuf[1] = (unsigned char)(addr >> 16);
-            recvbuf[2] = (unsigned char)(addr >> 8);
-            recvbuf[3] = (unsigned char)(addr);
-            recvbuf[4] = (unsigned char)(dstaddr.sin_port >> 8);
-            recvbuf[5] = (unsigned char)(dstaddr.sin_port);
-            write(jpassfd, recvbuf, 6);
+            //unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
+            //int port = htons(dstaddr.sin_port);
+            //recvbuf[0] = (unsigned char)(addr >> 24);
+            //recvbuf[1] = (unsigned char)(addr >> 16);
+            //recvbuf[2] = (unsigned char)(addr >> 8);
+            //recvbuf[3] = (unsigned char)(addr);
+            //recvbuf[4] = (unsigned char)(port >> 8);
+            //recvbuf[5] = (unsigned char)(port);
+            //write(jpassfd, recvbuf, 6);
 
             if (--nready <= 0) continue;
         }
@@ -136,11 +131,15 @@ int main(int argc, char *argv[])
                 memset(recvbuf, 0, sizeof(recvbuf));
 		int ret = read(conn, recvbuf, sizeof(recvbuf));
                 if (ret == -1) {
-                    ERR_EXIT("read conn error");
+                    if (i % 2 == 1) {
+                        printf("read client conn error\n");
+                    } else {
+                        printf("read jpass conn error\n");
+                    }
                 } else if (ret == 0) {
                     if (i % 2 == 1) {
                         // client conn
-			fprintf(stderr, "client conn close.\n");
+			//printf("client conn close.\n");
                         close(conn);
                         clients[i].fd = -1;
 
@@ -149,7 +148,7 @@ int main(int argc, char *argv[])
                         clients[i+1].fd = -1;
                     } else {
                         // server conn
-			fprintf(stderr, "server conn close.\n");
+			//printf("server conn close.\n");
                         close(conn);
                         clients[i].fd = -1;
 
@@ -161,8 +160,8 @@ int main(int argc, char *argv[])
                     conncount --;
                 } else {
                     // debug
-                    //print_buf(recvbuf, ret);
-                    fputs(recvbuf, stdout);
+                    print_buf(recvbuf, ret);
+                    //fputs(recvbuf, stdout);
 
 		    // write other part
                     if (i % 2 == 1) {
@@ -188,7 +187,7 @@ int create_listen_socket() {
     int listenfd;
 
     if ((listenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        ERR_EXIT("create listening socket error");
+        printf("create listening socket error\n");
     }
 
     struct sockaddr_in listenaddr;
@@ -199,21 +198,21 @@ int create_listen_socket() {
 
     int on = 1;
     if (setsockopt(listenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
-        ERR_EXIT("setsockopt IP_TRANSPARENT error");
+        printf("setsockopt IP_TRANSPARENT error\n");
     }
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-        ERR_EXIT("setsockopt SO_REUSEADDR error");
+        printf("setsockopt SO_REUSEADDR error\n");
     }
 
     if (bind(listenfd, (struct sockaddr *)&listenaddr, sizeof(listenaddr)) < 0){
-        ERR_EXIT("bind error");
+        printf("bind error\n");
     }
 
     if (listen(listenfd, SOMAXCONN) < 0) {
-        ERR_EXIT("listen error");
+        printf("listen error\n");
     }
 
-    fprintf(stderr, "listening on port %d\n", LISTEN_PORT);
+    printf("listening on port %d\n", LISTEN_PORT);
 
     return listenfd;
 }
@@ -223,7 +222,7 @@ int create_jpass_socket() {
     int jpassfd;
 
     if ((jpassfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        ERR_EXIT("create jpass socket error");       
+        printf("create jpass socket error\n");       
     }
 
     struct sockaddr_in sshservaddr;
@@ -232,8 +231,10 @@ int create_jpass_socket() {
     sshservaddr.sin_port = htons(JPASS_PORT);
     sshservaddr.sin_addr.s_addr = inet_addr(JPASS_SERVER);
 
+    //printf("connecting to jpass server: %s:%d\n", JPASS_SERVER, JPASS_PORT);
+
     if (connect(jpassfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
-        ERR_EXIT("connect jpass server error"); 
+        printf("connect jpass server error\n"); 
     }
 
     return jpassfd;
