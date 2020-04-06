@@ -11,16 +11,12 @@
 #include<signal.h>
 #include<poll.h>
 
-#include<libssh2.h>
-
 #include "util.h"
 
-#define MAX_CONN 2048
+#define MAX_CONN 2047
 #define LISTEN_PORT 8117
-#define SSH_SERVER "120.27.157.103"
-#define SSH_PORT 10000
-#define SSH_USERNAME "root"
-#define SSH_PASSWORD "ALFZLMQiG5aArobI3NPWDiRUTz2U"
+#define JPASS_SERVER "192.168.56.1"
+#define JPASS_PORT 8119
 
 // include the listen fd
 #define ERR_EXIT(m) \
@@ -30,20 +26,11 @@
     } while (0)
 
 int create_listen_socket();
-int create_ssh_socket();
-LIBSSH2_SESSION * init_ssh_session(int sshfd);
-void handler(int sig);
 
 int main(int argc, char *argv[])
 {
-    signal(SIGPIPE, SIG_IGN);
-
     // init listen socket
     int listenfd = create_listen_socket();
-
-    // init ssh session
-    int sshfd = create_ssh_socket();
-    LIBSSH2_SESSION *session = init_ssh_session(sshfd);
 
     struct sockaddr_in peeraddr; 
     struct sockaddr_in dstaddr;
@@ -64,47 +51,11 @@ int main(int argc, char *argv[])
     clients[0].fd = listenfd;
     clients[0].events = POLLIN;
 
-    LIBSSH2_CHANNEL *channels[MAX_CONN-1];
-
     char recvbuf[1024] = {0};
 
     // -- main loop ------------------------------------------------------------
     while (1)
     {
-        //printf("[%d]====================loop start\n", conncount);
-        // -- read data from ssh channel ---------------------------------------
-        for (i = 1; i < MAX_CONN; i++) {
-            if (clients[i].fd > 0) {
-        //printf("--------------------start read ssh: %d\n", i);
-                memset(recvbuf, 0, sizeof(recvbuf));
-                int ret = libssh2_channel_read(channels[i-1], recvbuf, sizeof(recvbuf));
-
-        //printf("--------------------done read ssh: %d/%d\n", i, ret);
-                if (ret == LIBSSH2_ERROR_EAGAIN) {
-                    // do nothing
-                } else if (ret < 0) {
-		    ERR_EXIT("read data from channel error");
-
-                    fprintf(stderr, "ssh channel close.\n");
-                    clients[i].fd = -1;
-                    conncount --;
-                    close(conn);
-                    
-		    libssh2_channel_close(channels[i-1]);
-		    libssh2_channel_free(channels[i-1]);
-
-                } else if (ret > 0) {
-                    // debug
-                    //print_buf(recvbuf, ret);
-                    //printf("====================%d/%d recving:\n", i, ret);
-                    //fputs(recvbuf, stdout);
-
-		    write(clients[i].fd, recvbuf, ret);
-                }
-
-            }
-        }
-
         // set clientspoll
         clientcount = 0;
         for (i = 0; i < MAX_CONN; i++) {
@@ -114,7 +65,7 @@ int main(int argc, char *argv[])
         }
 
         // poll
-        nready = poll(clientspoll, clientcount + 1, 1);
+        nready = poll(clientspoll, clientcount + 1, -1);
         if (nready == -1) {
             if (errno == EINTR) {
                 continue;
@@ -133,16 +84,17 @@ int main(int argc, char *argv[])
 	    }
 
             // save conn
-            for (i = 1; i < MAX_CONN; i++) {
+            for (i = 1; i < MAX_CONN; i += 2) {
                 if (clients[i].fd < 0) {
                     clients[i].fd = conn;
 		    clients[i].events = POLLIN;
-                    conncount ++;
+                    
+                    conncount += 1;
                     break;
                 }
             }
 
-            if (i == MAX_CONN) {
+            if ((i+1) >= MAX_CONN) {
                 fprintf(stderr, "too many clients, max: %d\n", MAX_CONN);
                 exit(EXIT_FAILURE);
             }
@@ -156,17 +108,20 @@ int main(int argc, char *argv[])
             printf("[%d]: recv conn %s:%d -> ", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
             printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
 
-            int dstport = ntohs(dstaddr.sin_port);
-            const char *dstip = inet_ntoa(dstaddr.sin_addr);
+	    // create jpass server conn
+            int jpassfd = create_jpass_socket();
+	    clients[i+1].fd = jpassfd;
+	    clients[i+1].events = POLLIN;
 
-            // create ssh channel
-	    LIBSSH2_CHANNEL *channel;
-	    libssh2_session_set_blocking(session, 1);
-	    if(!(channel = libssh2_channel_direct_tcpip(session, dstip, dstport))) {
-		ERR_EXIT("fail to create channel");
-	    }
-	    libssh2_session_set_blocking(session, 0);
-            channels[i-1] = channel;
+	    // send jpass sock header data (big-endian ip + big-endian port)
+            unsigned int addr = inet_addr(inet_ntoa(dstaddr.sin_addr));
+            recvbuf[0] = (unsigned char)(addr >> 24);
+            recvbuf[1] = (unsigned char)(addr >> 16);
+            recvbuf[2] = (unsigned char)(addr >> 8);
+            recvbuf[3] = (unsigned char)(addr);
+            recvbuf[4] = (unsigned char)(dstaddr.sin_port >> 8);
+            recvbuf[5] = (unsigned char)(dstaddr.sin_port);
+            write(jpassfd, recvbuf, 6);
 
             if (--nready <= 0) continue;
         }
@@ -181,35 +136,46 @@ int main(int argc, char *argv[])
                 memset(recvbuf, 0, sizeof(recvbuf));
 		int ret = read(conn, recvbuf, sizeof(recvbuf));
                 if (ret == -1) {
-                    ERR_EXIT("readline error");
+                    ERR_EXIT("read conn error");
                 } else if (ret == 0) {
-                    fprintf(stderr, "client conn close.\n");
-                    clients[i].fd = -1;
+                    if (i % 2 == 1) {
+                        // client conn
+			fprintf(stderr, "client conn close.\n");
+                        close(conn);
+                        clients[i].fd = -1;
+
+                        // close the server conn as well
+                        close(clients[i+1].fd);
+                        clients[i+1].fd = -1;
+                    } else {
+                        // server conn
+			fprintf(stderr, "server conn close.\n");
+                        close(conn);
+                        clients[i].fd = -1;
+
+                        // close the client conn as well
+                        close(clients[i-1].fd);
+                        clients[i-1].fd = -1;
+		    }
+
                     conncount --;
-                    close(conn);
-                    
-		    libssh2_channel_close(channels[i-1]);
-		    libssh2_channel_free(channels[i-1]);
                 } else {
                     // debug
                     //print_buf(recvbuf, ret);
-                    printf("====================sending:\n");
-                    //fputs(recvbuf, stdout);
+                    fputs(recvbuf, stdout);
 
-                    // write to ssh channel
-		    libssh2_channel_write(channels[i-1], recvbuf, ret);
-                    printf("====================done sending:\n");
+		    // write other part
+                    if (i % 2 == 1) {
+                        write(clients[i+1].fd, recvbuf, ret);
+                    } else {
+                        write(clients[i-1].fd, recvbuf, ret);
+                    }
                 }
 
                 if (--nready <= 0) break;
             }
         }
-    } 
-
-    libssh2_session_disconnect(session, "Normal Shutdown");
-    libssh2_session_free(session);
-    close(sshfd);
-    libssh2_exit();
+    }
 
     close(listenfd);
 
@@ -252,50 +218,23 @@ int create_listen_socket() {
     return listenfd;
 }
 
-// return ssh fd
-int create_ssh_socket() {
-    int sshfd;
+// return socket fd
+int create_jpass_socket() {
+    int jpassfd;
 
-    if ((sshfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        ERR_EXIT("create ssh socket error");       
+    if ((jpassfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
+        ERR_EXIT("create jpass socket error");       
     }
 
     struct sockaddr_in sshservaddr;
     memset(&sshservaddr, 0, sizeof(sshservaddr));
     sshservaddr.sin_family = AF_INET;  
-    sshservaddr.sin_port = htons(SSH_PORT);
-    sshservaddr.sin_addr.s_addr = inet_addr(SSH_SERVER);
+    sshservaddr.sin_port = htons(JPASS_PORT);
+    sshservaddr.sin_addr.s_addr = inet_addr(JPASS_SERVER);
 
-    if (connect(sshfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
-        ERR_EXIT("connect ssh server error"); 
+    if (connect(jpassfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
+        ERR_EXIT("connect jpass server error"); 
     }
 
-    return sshfd;
+    return jpassfd;
 }
-
-LIBSSH2_SESSION * init_ssh_session(int sshfd) {
-    LIBSSH2_SESSION *session;
-
-    if((libssh2_init(0)) < 0) {
-        ERR_EXIT("init libssh2 error");       
-    }
-
-    session = libssh2_session_init();
-    if(libssh2_session_handshake(session, sshfd)) {
-        ERR_EXIT("fail to do ssh session handshake");       
-    }
-
-    if (libssh2_userauth_password(session, SSH_USERNAME, SSH_PASSWORD)) {
-        ERR_EXIT("fail to do ssh auth");       
-    } else {
-        fprintf(stderr, "ssh authenticated by password succeeded.\n");
-    }
-
-    return session;
-}
-
-void handler(int sig) {
-    fprintf(stderr, "processor recv a sig=%d\n", sig);
-    exit(EXIT_SUCCESS);
-}
-
