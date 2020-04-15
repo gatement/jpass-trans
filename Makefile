@@ -3,7 +3,7 @@ output = bin
 compiler = cc
 
 compile: $(objects) mkoutput
-	$(compiler) -o $(output)/jpass-trans -lssh2 $(objects)
+	$(compiler) -o $(output)/jpass-trans $(objects)
 
 main.o: main.h
 util.o: util.h

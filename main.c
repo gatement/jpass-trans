@@ -14,16 +14,17 @@
 #include "util.h"
 
 #define MAX_CONN 2047
-#define LISTEN_PORT 8117
+#define TCP_LISTEN_PORT 8117
 #define JPASS_SERVER "192.168.56.1"
 #define JPASS_PORT 8117
 
-int create_listen_socket();
+int create_tcp_listen_socket();
+int create_jpass_client_tcp_socket();
 
 int main(int argc, char *argv[])
 {
-    // init listen socket
-    int listenfd = create_listen_socket();
+    // init listening sockets
+    int tcplistenfd = create_tcp_listen_socket();
 
     struct sockaddr_in peeraddr; 
     struct sockaddr_in dstaddr;
@@ -41,7 +42,7 @@ int main(int argc, char *argv[])
     for (i = 0; i < MAX_CONN; i++) {
         clients[i].fd = -1;
     }
-    clients[0].fd = listenfd;
+    clients[0].fd = tcplistenfd;
     clients[0].events = POLLIN;
 
     unsigned char recvbuf[1024] = {0};
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
         // -- start accept conn ------------------------------------------------
         if (clientspoll[0].revents & POLLIN) {
             // accept conn
-            conn = accept(listenfd, (struct sockaddr *)&peeraddr, &peeraddrlen); 
+            conn = accept(tcplistenfd, (struct sockaddr *)&peeraddr, &peeraddrlen); 
             if (conn == -1) {
                 printf("accept conn error\n");
 	    }
@@ -102,7 +103,7 @@ int main(int argc, char *argv[])
             printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
 
 	    // create jpass server conn
-            int jpassfd = create_jpass_socket();
+            int jpassfd = create_jpass_client_tcp_socket();
 	    clients[i+1].fd = jpassfd;
 	    clients[i+1].events = POLLIN;
 
@@ -175,53 +176,53 @@ int main(int argc, char *argv[])
         }
     }
 
-    close(listenfd);
+    close(tcplistenfd);
 
     printf("application exited.\n");
     return 0;
 }
 
 // return listen fd
-int create_listen_socket() {
-    int listenfd;
+int create_tcp_listen_socket() {
+    int tcplistenfd;
 
-    if ((listenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        printf("create listening socket error\n");
+    if ((tcplistenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
+        printf("create tcp listening socket error\n");
     }
 
     struct sockaddr_in listenaddr;
     memset(&listenaddr, 0, sizeof(listenaddr));
     listenaddr.sin_family = AF_INET;
-    listenaddr.sin_port = htons(LISTEN_PORT);
+    listenaddr.sin_port = htons(TCP_LISTEN_PORT);
     listenaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int on = 1;
-    if (setsockopt(listenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
-        printf("setsockopt IP_TRANSPARENT error\n");
+    if (setsockopt(tcplistenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
+        printf("tcp listening socket setsockopt IP_TRANSPARENT error\n");
     }
-    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-        printf("setsockopt SO_REUSEADDR error\n");
-    }
-
-    if (bind(listenfd, (struct sockaddr *)&listenaddr, sizeof(listenaddr)) < 0){
-        printf("bind error\n");
+    if (setsockopt(tcplistenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+        printf("tcp listening socket setsockopt SO_REUSEADDR error\n");
     }
 
-    if (listen(listenfd, SOMAXCONN) < 0) {
-        printf("listen error\n");
+    if (bind(tcplistenfd, (struct sockaddr *)&listenaddr, sizeof(listenaddr)) < 0){
+        printf("tcp listening socket bind error\n");
     }
 
-    printf("listening on port %d\n", LISTEN_PORT);
+    if (listen(tcplistenfd, SOMAXCONN) < 0) {
+        printf("tcp listen error\n");
+    }
 
-    return listenfd;
+    printf("listening on port %d\n", TCP_LISTEN_PORT);
+
+    return tcplistenfd;
 }
 
 // return socket fd
-int create_jpass_socket() {
+int create_jpass_client_tcp_socket() {
     int jpassfd;
 
     if ((jpassfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)  {
-        printf("create jpass socket error\n");       
+        printf("create jpass client tcp socket error\n");       
     }
 
     struct sockaddr_in sshservaddr;
@@ -238,3 +239,4 @@ int create_jpass_socket() {
 
     return jpassfd;
 }
+
