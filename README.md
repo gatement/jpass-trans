@@ -19,3 +19,5 @@ client <==> tproxy <=TCP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> host
  
 ## arch (UDP)
 client <==> tproxy <=UDP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> jpass-udp <=UDP=> host
+
+socat tcp4-listen:53,reuseaddr,fork udp:8.8.8.8:53 

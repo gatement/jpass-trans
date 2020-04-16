@@ -92,12 +92,13 @@ int main(int argc, char *argv[])
             struct sockaddr_in peeraddr; 
             socklen_t peeraddrlen = sizeof(peeraddr); 
             memset(recvbuf, 0, sizeof(recvbuf));
-            int ret = recvfrom(udplistenfd, recvbuf + 8, sizeof(recvbuf), 0, (struct sockaddr *)&peeraddr, &peeraddrlen);
+            //int ret = recvfrom(udplistenfd, recvbuf + 8, sizeof(recvbuf), 0, (struct sockaddr *)&peeraddr, &peeraddrlen);
+            int ret = recvfrom(udplistenfd, recvbuf + 6, sizeof(recvbuf), 0, (struct sockaddr *)&peeraddr, &peeraddrlen);
             if (ret == -1) {
                 printf("recv from UDP error\n");
 	    } else if (ret != 0) {
                 // debug
-                //print_buf(recvbuf, ret);
+                print_buf(recvbuf, ret);
                 //fputs(recvbuf, stdout);
                 
                 // get dst addr
@@ -132,7 +133,7 @@ int main(int argc, char *argv[])
                     exit(EXIT_FAILURE);
                 }
 
-		// send jpass sock header data (big-endian ip + big-endian port)
+		// send jpass sock header (big-endian ip + big-endian port) and body
                 //unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
                 //int port = htons(dstaddr.sin_port);
                 unsigned int addr = htonl(inet_addr(DNS_SERVER));
@@ -143,9 +144,10 @@ int main(int argc, char *argv[])
                 recvbuf[3] = (unsigned char)(addr);
                 recvbuf[4] = (unsigned char)(port >> 8);
                 recvbuf[5] = (unsigned char)(port);
-                recvbuf[6] = (unsigned char)(ret >> 8);
-                recvbuf[7] = (unsigned char)(ret);
-                write(jpassfd, recvbuf, ret + 8);
+                //recvbuf[6] = (unsigned char)(ret >> 8);
+                //recvbuf[7] = (unsigned char)(ret);
+                //write(jpassfd, recvbuf, ret + 8);
+                write(jpassfd, recvbuf, ret + 6);
             }
             if (--nready <= 0) continue;
         }
@@ -168,13 +170,17 @@ int main(int argc, char *argv[])
                     conncount --;
                 } else {
                     // debug
-                    print_buf(recvbuf, ret);
+                    //print_buf(recvbuf, ret);
                     //fputs(recvbuf, stdout);
 
 		    // write other part
                     struct sockaddr_in peeraddr = clientAddrs[i]; 
                     socklen_t peeraddrlen = sizeof(peeraddr); 
                     sendto(udplistenfd, recvbuf, ret, 0, (struct sockaddr *)&peeraddr, peeraddrlen);
+
+                    close(conn);
+                    clients[i].fd = -1;
+                    conncount --;
                 }
 
                 if (--nready <= 0) break;
