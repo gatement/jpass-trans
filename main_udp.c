@@ -14,6 +14,8 @@
 #include "util.h"
 
 #define MAX_CONN 2047
+#define DNS_SERVER "127.0.0.1"
+#define DNS_PORT 53
 #define JPASS_SERVER "192.168.56.1"
 #define JPASS_PORT 8117
 
@@ -46,7 +48,6 @@ int main(int argc, char *argv[])
     socklen_t dstaddrlen = sizeof(dstaddr);
 
     int conn;
-    int size;
     int conncount = 0;
     int nready;
     int clientcount;
@@ -91,10 +92,14 @@ int main(int argc, char *argv[])
             struct sockaddr_in peeraddr; 
             socklen_t peeraddrlen = sizeof(peeraddr); 
             memset(recvbuf, 0, sizeof(recvbuf));
-            size = recvfrom(udplistenfd, recvbuf, sizeof(recvbuf), 0, (struct sockaddr *)&peeraddr, &peeraddrlen);
-            if (size == -1) {
+            int ret = recvfrom(udplistenfd, recvbuf + 8, sizeof(recvbuf), 0, (struct sockaddr *)&peeraddr, &peeraddrlen);
+            if (ret == -1) {
                 printf("recv from UDP error\n");
-	    } else if (size != 0) {
+	    } else if (ret != 0) {
+                // debug
+                //print_buf(recvbuf, ret);
+                //fputs(recvbuf, stdout);
+                
                 // get dst addr
                 // TODO
 		//if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
@@ -102,8 +107,9 @@ int main(int argc, char *argv[])
                 //}
 
                 // print log
-                printf("[%d]: recv udp %s:%d -> ", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
-                printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
+                printf("[%d]: recv udp %s:%d -> \n", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+                // TODO
+                //printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
 
 		// create jpass server conn
                 int jpassfd = create_jpass_client_tcp_socket();
@@ -128,16 +134,18 @@ int main(int argc, char *argv[])
 
 		// send jpass sock header data (big-endian ip + big-endian port)
                 //unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
-                unsigned int addr = htonl(inet_addr("8.8.8.8"));
                 //int port = htons(dstaddr.sin_port);
-                int port = htons(53);
+                unsigned int addr = htonl(inet_addr(DNS_SERVER));
+                int port = (unsigned short)DNS_PORT;
                 recvbuf[0] = (unsigned char)(addr >> 24);
                 recvbuf[1] = (unsigned char)(addr >> 16);
                 recvbuf[2] = (unsigned char)(addr >> 8);
                 recvbuf[3] = (unsigned char)(addr);
                 recvbuf[4] = (unsigned char)(port >> 8);
                 recvbuf[5] = (unsigned char)(port);
-                write(jpassfd, recvbuf, 6);
+                recvbuf[6] = (unsigned char)(ret >> 8);
+                recvbuf[7] = (unsigned char)(ret);
+                write(jpassfd, recvbuf, ret + 8);
             }
             if (--nready <= 0) continue;
         }
@@ -160,7 +168,7 @@ int main(int argc, char *argv[])
                     conncount --;
                 } else {
                     // debug
-                    //print_buf(recvbuf, ret);
+                    print_buf(recvbuf, ret);
                     //fputs(recvbuf, stdout);
 
 		    // write other part
@@ -197,6 +205,7 @@ int create_udp_server_socker() {
     if (setsockopt(udplistenfd, SOL_IP, IP_TRANSPARENT, &on, sizeof(on)) < 0) {
         printf("udp listening socket setsockopt IP_TRANSPARENT error\n");
     }
+    // TODO
     /*
     if (setsockopt(udplistenfd, IPPROTO_IP, IP_RECVORIGDSTADDR, &on, sizeof(on)) < 0) {
         printf("udp listening socket setsockopt IP_RECVORIGDSTADDR error\n");

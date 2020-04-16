@@ -15,7 +15,7 @@ UDP tunnel: bin/jpass-trans-udp udp 8116
 DNS tunnel: bin/jpass-trans-udp dns 53
 
 ## arch (TCP)
-detail: client <==> tproxy <=TCP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> host
-
+client <==> tproxy <=TCP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> host
+ 
 ## arch (UDP)
 client <==> tproxy <=UDP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> jpass-udp <=UDP=> host
