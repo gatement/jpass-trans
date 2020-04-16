@@ -10,3 +10,7 @@ ip route add local 0.0.0.0/0 dev lo table 100
 #ip route add local 0.0.0.0/0 dev lo tab local
 
 #iptables -t mangle -L -n -v --line-numbers
+
+#ip rule add fwmark 0x2333/0x2333 pref 101 table 101
+#ip route add local default dev lo table 101
+#iptables -t mangle -A PREROUTING -p udp -j TPROXY --tproxy-mark 0x2333/0x2333 --on-ip 127.0.0.1 --on-port 1080

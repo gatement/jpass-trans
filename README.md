@@ -10,11 +10,12 @@ make clean
 ./build-openwrt.sh 
 
 ## run
-bin/jpass-trans-tcp
-bin/jpass-trans-udp
+TCP tunnel: bin/jpass-trans-tcp 8117
+UDP tunnel: bin/jpass-trans-udp udp 8116
+DNS tunnel: bin/jpass-trans-udp dns 53
 
 ## arch (TCP)
 detail: client <==> tproxy <=TCP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> host
 
 ## arch (UDP)
-client <==> tproxy <=UDP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> jpass-dns <=UDP=> DNSServer
+client <==> tproxy <=UDP=> jpass-trans <=TCP=> jpass-ssh <==> sshd <=TCP=> jpass-udp <=UDP=> host

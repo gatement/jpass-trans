@@ -14,15 +14,22 @@
 #include "util.h"
 
 #define MAX_CONN 2047
-#define TCP_LISTEN_PORT 8117
 #define JPASS_SERVER "192.168.56.1"
 #define JPASS_PORT 8117
+
+int tcpListenPort = 0;
 
 int create_tcp_listen_socket();
 int create_jpass_client_tcp_socket();
 
 int main(int argc, char *argv[])
 {
+    if (argc != 2) {
+        printf("ERROR: please input TCP listening port parm.\n");
+        exit(EXIT_FAILURE);
+    }
+    tcpListenPort = atoi(argv[1]);
+
     // init listening socket
     int tcplistenfd = create_tcp_listen_socket();
 
@@ -75,49 +82,47 @@ int main(int argc, char *argv[])
             conn = accept(tcplistenfd, (struct sockaddr *)&peeraddr, &peeraddrlen); 
             if (conn == -1) {
                 printf("accept conn error\n");
-	    }
-
-            // save conn
-            for (i = 1; i < MAX_CONN; i += 2) {
-                if (clients[i].fd < 0) {
-                    clients[i].fd = conn;
-		    clients[i].events = POLLIN;
-                    
-                    conncount ++;
-                    break;
+	    } else {
+                // save conn
+                for (i = 1; i < MAX_CONN; i += 2) {
+                    if (clients[i].fd < 0) {
+                        clients[i].fd = conn;
+			clients[i].events = POLLIN;
+                        conncount ++;
+                        break;
+                    }
                 }
+    
+                if ((i+1) >= MAX_CONN) {
+                    printf("too many clients, max: %d\n", MAX_CONN);
+                    exit(EXIT_FAILURE);
+                }
+    
+                // get dst addr
+		if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
+		    printf("get sock name error\n");
+                }
+    
+                // print log
+                printf("[%d]: recv conn %s:%d -> ", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+                printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
+    
+		// create jpass server conn
+                int jpassfd = create_jpass_client_tcp_socket();
+		clients[i+1].fd = jpassfd;
+		clients[i+1].events = POLLIN;
+    
+		// send jpass sock header data (big-endian ip + big-endian port)
+                unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
+                int port = htons(dstaddr.sin_port);
+                recvbuf[0] = (unsigned char)(addr >> 24);
+                recvbuf[1] = (unsigned char)(addr >> 16);
+                recvbuf[2] = (unsigned char)(addr >> 8);
+                recvbuf[3] = (unsigned char)(addr);
+                recvbuf[4] = (unsigned char)(port >> 8);
+                recvbuf[5] = (unsigned char)(port);
+                write(jpassfd, recvbuf, 6);
             }
-
-            if ((i+1) >= MAX_CONN) {
-                printf("too many clients, max: %d\n", MAX_CONN);
-                exit(EXIT_FAILURE);
-            }
-
-            // get dst addr
-	    if (getsockname(conn, (struct sockaddr *)&dstaddr, &dstaddrlen) < 0) {
-		printf("get sock name error\n");
-            }
-
-            // print log
-            printf("[%d]: recv conn %s:%d -> ", conncount, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
-            printf("%s:%d\n", inet_ntoa(dstaddr.sin_addr), ntohs(dstaddr.sin_port));
-
-	    // create jpass server conn
-            int jpassfd = create_jpass_client_tcp_socket();
-	    clients[i+1].fd = jpassfd;
-	    clients[i+1].events = POLLIN;
-
-	    // send jpass sock header data (big-endian ip + big-endian port)
-            unsigned int addr = htonl(inet_addr(inet_ntoa(dstaddr.sin_addr)));
-            int port = htons(dstaddr.sin_port);
-            recvbuf[0] = (unsigned char)(addr >> 24);
-            recvbuf[1] = (unsigned char)(addr >> 16);
-            recvbuf[2] = (unsigned char)(addr >> 8);
-            recvbuf[3] = (unsigned char)(addr);
-            recvbuf[4] = (unsigned char)(port >> 8);
-            recvbuf[5] = (unsigned char)(port);
-            write(jpassfd, recvbuf, 6);
-
             if (--nready <= 0) continue;
         }
 
@@ -193,7 +198,7 @@ int create_tcp_listen_socket() {
     struct sockaddr_in listenaddr;
     memset(&listenaddr, 0, sizeof(listenaddr));
     listenaddr.sin_family = AF_INET;
-    listenaddr.sin_port = htons(TCP_LISTEN_PORT);
+    listenaddr.sin_port = htons(tcpListenPort);
     listenaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int on = 1;
@@ -212,7 +217,7 @@ int create_tcp_listen_socket() {
         printf("tcp listen error\n");
     }
 
-    printf("listening on TCP port %d\n", TCP_LISTEN_PORT);
+    printf("listening on TCP port %d\n", tcpListenPort);
 
     return tcplistenfd;
 }
