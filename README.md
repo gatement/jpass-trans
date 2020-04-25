@@ -9,4 +9,4 @@ make clean
 ./build-openwrt.sh 
 
 ## run
-bin/jpass-trans 8116 192.168.1.2 8117
+sudo bin/jpass-trans 8116 192.168.1.2 8117
