@@ -238,7 +238,7 @@ int create_jpass_client_tcp_socket() {
     sshservaddr.sin_port = htons(jpassPort);
     sshservaddr.sin_addr.s_addr = inet_addr(jpassServer);
 
-    //printf("connecting to jpass server: %s:%d\n", jpassServer, jpassPort);
+    printf("connecting to jpass server %s:%d\n", jpassServer, jpassPort);
 
     if (connect(jpassfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
         printf("connect jpass server error\n"); 
