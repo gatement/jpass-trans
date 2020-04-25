@@ -9,4 +9,4 @@ make clean
 ./build-openwrt.sh 
 
 ## run
-TCP tunnel: bin/jpass-trans 8115
+bin/jpass-trans
