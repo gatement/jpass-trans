@@ -6,7 +6,11 @@
 iptables -t filter -P FORWARD ACCEPT
 iptables -t filter -F
 iptables -t mangle -F
+# jproxy
+iptables -t mangle -A PREROUTING -p tcp -d 47.52.27.162/32 -j ACCEPT
+# LAN
 iptables -t mangle -A PREROUTING -p tcp -d 192.168.1.0/24 -j ACCEPT
+# tproxy
 iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 8116 --tproxy-mark 1
 
 ip rule add fwmark 1 lookup 100
