@@ -1,13 +1,9 @@
-objects_tcp = main_tcp.o util.o
-objects_udp = main_udp.o util.o
+objects = main.o util.o
 output = bin
 compiler = cc
 
-tcp: $(objects_tcp) mkoutput
-	$(compiler) -o $(output)/jpass-trans-tcp $(objects_tcp)
-
-udp: $(objects_udp) mkoutput
-	$(compiler) -o $(output)/jpass-trans-udp $(objects_udp)
+compile: $(objects) mkoutput
+	$(compiler) -o $(output)/jpass-trans $(objects)
 
 util.o: util.h
 
@@ -20,4 +16,4 @@ clean:
 	rm -rf $(output) *.o
 
 help:
-	@echo "make tcp|upd|clean"
+	@echo "make | make clean"

@@ -14,21 +14,23 @@
 #include "util.h"
 
 #define MAX_CONN 2047
-#define JPASS_SERVER "192.168.56.1"
-#define JPASS_PORT 8117
 
 int tcpListenPort = 0;
+int jpassPort = 0;
+char *jpassServer;
 
 int create_tcp_listen_socket();
 int create_jpass_client_tcp_socket();
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        printf("ERROR: please input TCP listening port parm.\n");
+    if (argc != 4) {
+        printf("usage: jpass-trans {tcp listen port} {jpass server} {jpass port}.\n");
         exit(EXIT_FAILURE);
     }
     tcpListenPort = atoi(argv[1]);
+    jpassServer = argv[2];
+    jpassPort = atoi(argv[3]);
 
     // init listening socket
     int tcplistenfd = create_tcp_listen_socket();
@@ -233,10 +235,10 @@ int create_jpass_client_tcp_socket() {
     struct sockaddr_in sshservaddr;
     memset(&sshservaddr, 0, sizeof(sshservaddr));
     sshservaddr.sin_family = AF_INET;  
-    sshservaddr.sin_port = htons(JPASS_PORT);
-    sshservaddr.sin_addr.s_addr = inet_addr(JPASS_SERVER);
+    sshservaddr.sin_port = htons(jpassPort);
+    sshservaddr.sin_addr.s_addr = inet_addr(jpassServer);
 
-    //printf("connecting to jpass server: %s:%d\n", JPASS_SERVER, JPASS_PORT);
+    //printf("connecting to jpass server: %s:%d\n", jpassServer, jpassPort);
 
     if (connect(jpassfd, (struct sockaddr *)&sshservaddr, sizeof(sshservaddr)) < 0) {
         printf("connect jpass server error\n"); 
